@@ -30,8 +30,6 @@ jobs:
       # ──────────────────────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -61,50 +59,72 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       # ──────────────────────────────────────────────────────────────────────
-      - name: Download libv2ray (xray-core) AAR
+      # Определяем актуальную версию libv2ray и передаём её Gradle через property.
+      # Gradle будет использовать JitPack: com.github.2dust:libv2ray:<VERSION>
+      # Это надёжнее, чем скачивать AAR вручную.
+      - name: Detect libv2ray version
         run: |
-          mkdir -p app/libs
+          echo "=== Поиск актуальной версии libv2ray ==="
 
-          echo "Fetching latest libv2ray release..."
-          RELEASE_JSON=$(curl -sf https://api.github.com/repos/2dust/libv2ray/releases/latest || echo "")
+          # 1. Пробуем GitHub Releases API
+          RELEASE_DATA=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/2dust/libv2ray/releases/latest" 2>/dev/null || echo "")
 
-          if [ -n "$RELEASE_JSON" ]; then
-            # Extract .aar download URL
-            ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
+          TAG=$(echo "$RELEASE_DATA" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
+            2>/dev/null || echo "")
+
+          # 2. Fallback: Tags API
+          if [ -z "$TAG" ]; then
+            echo "Releases API не ответил, пробуем Tags API..."
+            TAGS_DATA=$(curl -sf \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/2dust/libv2ray/tags?per_page=1" 2>/dev/null || echo "")
+            TAG=$(echo "$TAGS_DATA" | \
+              python3 -c "import sys,json; t=json.load(sys.stdin); print(t[0]['name'] if t else '')" \
+              2>/dev/null || echo "")
+          fi
+
+          # 3. Последний резерв — известная рабочая версия
+          if [ -z "$TAG" ]; then
+            echo "Не удалось получить версию из GitHub API (rate limit?)."
+            echo "Используем последнюю известную рабочую версию..."
+            TAG="1.8.19"
+          fi
+
+          echo "Версия libv2ray: $TAG"
+          echo "libv2ray_version=$TAG" >> gradle.properties
+
+          # Также проверяем: есть ли в релизе prebuilt AAR (ускоряет сборку)
+          ASSET_URL=$(echo "$RELEASE_DATA" | \
+            python3 -c "
           import sys, json
-          data = json.load(sys.stdin)
-          assets = data.get('assets', [])
+          d = json.load(sys.stdin)
+          assets = d.get('assets', [])
           aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
           print(aar)
           " 2>/dev/null || echo "")
 
-            if [ -n "$ASSET_URL" ]; then
-              VERSION=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','?'))" 2>/dev/null)
-              echo "Скачиваем libv2ray $VERSION..."
-              echo "URL: $ASSET_URL"
-              curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar
-              echo "Успешно скачан: $(ls -lh app/libs/libv2ray-release.aar)"
-            else
-              echo "AAR не найден в последнем релизе, пробуем прямую загрузку..."
-              # Fallback: try downloading from a known release
-              FALLBACK_URL="https://github.com/2dust/libv2ray/releases/latest/download/libv2ray-release.aar"
-              curl -fL "$FALLBACK_URL" -o app/libs/libv2ray-release.aar 2>/dev/null || true
-            fi
+          if [ -n "$ASSET_URL" ]; then
+            echo "Найден prebuilt AAR в релизе: $ASSET_URL"
+            echo "Скачиваем в app/libs/ (будет использован вместо JitPack)..."
+            mkdir -p app/libs
+            curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar && \
+              echo "AAR скачан: $(ls -lh app/libs/libv2ray-release.aar)" || \
+              echo "Скачивание не удалось, JitPack будет использован вместо этого"
           else
-            echo "Не удалось получить информацию о релизах (rate limit?). Пробуем прямую ссылку..."
-            curl -fL "https://github.com/2dust/libv2ray/releases/latest/download/libv2ray-release.aar" \
-              -o app/libs/libv2ray-release.aar 2>/dev/null || true
+            echo "Prebuilt AAR не найден в релизе — JitPack скачает и скомпилирует библиотеку."
           fi
 
-          # Verify download
-          if [ -f app/libs/libv2ray-release.aar ]; then
-            echo "libv2ray AAR готов: $(ls -lh app/libs/libv2ray-release.aar)"
-          else
-            echo "ПРЕДУПРЕЖДЕНИЕ: libv2ray AAR не скачан. Сборка может завершиться с ошибкой."
-            echo "Создаём пустой placeholder для продолжения..."
-            # Create a minimal placeholder so fileTree doesn't break the dependency block
-            touch app/libs/.gitkeep
-          fi
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Show resolved libv2ray config
+        run: |
+          echo "=== gradle.properties ==="
+          grep -i libv2ray gradle.properties || echo "(libv2ray_version не установлен — будет использован fileTree)"
+          echo ""
+          echo "=== app/libs/ ==="
+          ls -la app/libs/ 2>/dev/null || echo "(пусто)"
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Build Debug APK
@@ -124,14 +144,15 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC"
 
       # ──────────────────────────────────────────────────────────────────────
-      - name: Get APK info
+      - name: Show built APKs
+        if: always()
         run: |
           echo "=== Собранные APK ==="
-          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
+          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \; 2>/dev/null || echo "APK не найдены"
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Upload Debug APK
-        if: github.event.inputs.build_type != 'release'
+        if: github.event.inputs.build_type != 'release' && success()
         uses: actions/upload-artifact@v4
         with:
           name: EblanVPN-debug-${{ github.sha }}
@@ -140,7 +161,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Release APK
-        if: github.event.inputs.build_type == 'release'
+        if: github.event.inputs.build_type == 'release' && success()
         uses: actions/upload-artifact@v4
         with:
           name: EblanVPN-release-${{ github.sha }}
@@ -154,6 +175,9 @@ jobs:
         run: |
           echo "### Результат сборки" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          LIBV2RAY_VER=$(grep libv2ray_version gradle.properties 2>/dev/null | cut -d= -f2 || echo "fileTree")
+          echo "**libv2ray версия:** \`$LIBV2RAY_VER\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           APK_COUNT=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -gt "0" ]; then
             echo "✅ APK успешно собран!" >> $GITHUB_STEP_SUMMARY
@@ -163,10 +187,10 @@ jobs:
             find app/build/outputs/apk -name "*.apk" | while read f; do
               SIZE=$(ls -lh "$f" | awk '{print $5}')
               NAME=$(basename "$f")
-              echo "| $NAME | $SIZE |" >> $GITHUB_STEP_SUMMARY
+              echo "| \`$NAME\` | $SIZE |" >> $GITHUB_STEP_SUMMARY
             done
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Скачайте APK во вкладке **Artifacts** выше ☝️" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ APK не собран" >> $GITHUB_STEP_SUMMARY
+            echo "❌ APK не собран — проверьте логи выше" >> $GITHUB_STEP_SUMMARY
           fi
