@@ -1,0 +1,172 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Тип сборки"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+env:
+  JAVA_VERSION: "17"
+  GRADLE_VERSION: "8.9"
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+          cache: "gradle"
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Set up Gradle ${{ env.GRADLE_VERSION }}
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: false
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Generate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version ${{ env.GRADLE_VERSION }} --distribution-type bin
+          chmod +x gradlew
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Accept Android SDK licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Download libv2ray (xray-core) AAR
+        run: |
+          mkdir -p app/libs
+
+          echo "Fetching latest libv2ray release..."
+          RELEASE_JSON=$(curl -sf https://api.github.com/repos/2dust/libv2ray/releases/latest || echo "")
+
+          if [ -n "$RELEASE_JSON" ]; then
+            # Extract .aar download URL
+            ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assets = data.get('assets', [])
+          aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
+          print(aar)
+          " 2>/dev/null || echo "")
+
+            if [ -n "$ASSET_URL" ]; then
+              VERSION=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','?'))" 2>/dev/null)
+              echo "Скачиваем libv2ray $VERSION..."
+              echo "URL: $ASSET_URL"
+              curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar
+              echo "Успешно скачан: $(ls -lh app/libs/libv2ray-release.aar)"
+            else
+              echo "AAR не найден в последнем релизе, пробуем прямую загрузку..."
+              # Fallback: try downloading from a known release
+              FALLBACK_URL="https://github.com/2dust/libv2ray/releases/latest/download/libv2ray-release.aar"
+              curl -fL "$FALLBACK_URL" -o app/libs/libv2ray-release.aar 2>/dev/null || true
+            fi
+          else
+            echo "Не удалось получить информацию о релизах (rate limit?). Пробуем прямую ссылку..."
+            curl -fL "https://github.com/2dust/libv2ray/releases/latest/download/libv2ray-release.aar" \
+              -o app/libs/libv2ray-release.aar 2>/dev/null || true
+          fi
+
+          # Verify download
+          if [ -f app/libs/libv2ray-release.aar ]; then
+            echo "libv2ray AAR готов: $(ls -lh app/libs/libv2ray-release.aar)"
+          else
+            echo "ПРЕДУПРЕЖДЕНИЕ: libv2ray AAR не скачан. Сборка может завершиться с ошибкой."
+            echo "Создаём пустой placeholder для продолжения..."
+            # Create a minimal placeholder so fileTree doesn't break the dependency block
+            touch app/libs/.gitkeep
+          fi
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Build Debug APK
+        if: github.event.inputs.build_type != 'release'
+        run: |
+          ./gradlew :app:assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC"
+
+      - name: Build Release APK (unsigned)
+        if: github.event.inputs.build_type == 'release'
+        run: |
+          ./gradlew :app:assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC"
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Get APK info
+        run: |
+          echo "=== Собранные APK ==="
+          find app/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Upload Debug APK
+        if: github.event.inputs.build_type != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EblanVPN-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Release APK
+        if: github.event.inputs.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EblanVPN-release-${{ github.sha }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 90
+          if-no-files-found: error
+
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Build summary
+        if: always()
+        run: |
+          echo "### Результат сборки" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          APK_COUNT=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -gt "0" ]; then
+            echo "✅ APK успешно собран!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Файл | Размер |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+            find app/build/outputs/apk -name "*.apk" | while read f; do
+              SIZE=$(ls -lh "$f" | awk '{print $5}')
+              NAME=$(basename "$f")
+              echo "| $NAME | $SIZE |" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Скачайте APK во вкладке **Artifacts** выше ☝️" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ APK не собран" >> $GITHUB_STEP_SUMMARY
+          fi

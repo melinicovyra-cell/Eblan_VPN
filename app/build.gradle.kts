@@ -96,14 +96,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // libv2ray — supports VLESS, VMess, Trojan, Shadowsocks
-    // Option 1 (recommended): Download libv2ray-release.aar from
-    //   https://github.com/2dust/libv2ray/releases
-    //   and place it in app/libs/ directory, then use:
-    //   implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
-    //
-    // Option 2: JitPack (check https://jitpack.io/#2dust/libv2ray for latest version)
-    implementation("com.github.2dust:libv2ray:1.9.10")
+    // libv2ray (xray-core) — VLESS, VMess, Trojan, Shadowsocks, Reality, XTLS
+    // CI автоматически скачивает AAR из https://github.com/2dust/libv2ray/releases
+    // Для локальной разработки: скачайте libv2ray-release.aar и положите в app/libs/
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 
     debugImplementation(libs.androidx.ui.tooling)
 }
