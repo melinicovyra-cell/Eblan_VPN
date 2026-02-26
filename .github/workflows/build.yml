@@ -59,14 +59,16 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       # ──────────────────────────────────────────────────────────────────────
-      # Определяем актуальную версию libv2ray и передаём её Gradle через property.
-      # Gradle будет использовать JitPack: com.github.2dust:libv2ray:<VERSION>
-      # Это надёжнее, чем скачивать AAR вручную.
-      - name: Detect libv2ray version
+      # Стратегия: скачиваем prebuilt AAR напрямую из GitHub Releases.
+      # JitPack НЕ используется как основной метод, потому что libv2ray требует
+      # Go-тулчейн для компиляции xray-core — JitPack не может этого сделать.
+      # JitPack — только самый последний резерв.
+      - name: Download libv2ray AAR
         run: |
-          echo "=== Поиск актуальной версии libv2ray ==="
+          echo "=== Загрузка prebuilt AAR libv2ray ==="
+          mkdir -p app/libs
 
-          # 1. Пробуем GitHub Releases API
+          # 1. Получаем актуальный тег через GitHub Releases API
           RELEASE_DATA=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/2dust/libv2ray/releases/latest" 2>/dev/null || echo "")
@@ -86,45 +88,58 @@ jobs:
               2>/dev/null || echo "")
           fi
 
-          # 3. Последний резерв — известная рабочая версия
+          # 3. Резерв — последняя известная рабочая версия
           if [ -z "$TAG" ]; then
-            echo "Не удалось получить версию из GitHub API (rate limit?)."
-            echo "Используем последнюю известную рабочую версию..."
+            echo "GitHub API недоступен (rate limit?). Используем последнюю известную версию."
             TAG="1.8.19"
           fi
 
           echo "Версия libv2ray: $TAG"
-          echo "libv2ray_version=$TAG" >> gradle.properties
 
-          # Также проверяем: есть ли в релизе prebuilt AAR (ускоряет сборку)
-          ASSET_URL=$(echo "$RELEASE_DATA" | \
-            python3 -c "
+          # 4. Извлекаем URL AAR из RELEASE_DATA (если данные доступны)
+          ASSET_URL=""
+          if [ -n "$RELEASE_DATA" ]; then
+            ASSET_URL=$(echo "$RELEASE_DATA" | \
+              python3 -c "
           import sys, json
           d = json.load(sys.stdin)
           assets = d.get('assets', [])
           aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
           print(aar)
           " 2>/dev/null || echo "")
+          fi
 
-          if [ -n "$ASSET_URL" ]; then
-            echo "Найден prebuilt AAR в релизе: $ASSET_URL"
-            echo "Скачиваем в app/libs/ (будет использован вместо JitPack)..."
-            mkdir -p app/libs
-            curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar && \
-              echo "AAR скачан: $(ls -lh app/libs/libv2ray-release.aar)" || \
-              echo "Скачивание не удалось, JitPack будет использован вместо этого"
+          # 5. Если из API не получили URL — строим его напрямую по известному паттерну
+          if [ -z "$ASSET_URL" ]; then
+            ASSET_URL="https://github.com/2dust/libv2ray/releases/download/${TAG}/libv2ray-release.aar"
+            echo "URL не найден в API, используем прямой URL: $ASSET_URL"
+          fi
+
+          # 6. Скачиваем AAR (основной метод — fileTree, без JitPack)
+          echo "Скачиваем: $ASSET_URL"
+          if curl -fL --retry 3 --retry-delay 5 "$ASSET_URL" -o app/libs/libv2ray-release.aar; then
+            echo "AAR успешно скачан: $(ls -lh app/libs/libv2ray-release.aar)"
+            echo "Будет использован fileTree из app/libs/ (без JitPack)"
           else
-            echo "Prebuilt AAR не найден в релизе — JitPack скачает и скомпилирует библиотеку."
+            echo "Прямое скачивание не удалось. Последний резерв: JitPack с версией $TAG"
+            rm -f app/libs/libv2ray-release.aar
+            # Записываем версию только если не удалось скачать AAR
+            echo "libv2ray_version=$TAG" >> gradle.properties
           fi
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Show resolved libv2ray config
         run: |
           echo "=== gradle.properties ==="
-          grep -i libv2ray gradle.properties || echo "(libv2ray_version не установлен — будет использован fileTree)"
+          grep -i libv2ray gradle.properties 2>/dev/null && echo "(JitPack fallback активен)" || echo "(libv2ray_version не установлен — используется fileTree из app/libs/)"
           echo ""
           echo "=== app/libs/ ==="
-          ls -la app/libs/ 2>/dev/null || echo "(пусто)"
+          ls -lh app/libs/ 2>/dev/null || echo "(пусто)"
+          if [ -f app/libs/libv2ray-release.aar ]; then
+            echo "Prebuilt AAR найден — сборка пойдёт через fileTree (быстро)"
+          else
+            echo "AAR отсутствует — проверьте шаг 'Download libv2ray AAR'"
+          fi
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Build Debug APK
