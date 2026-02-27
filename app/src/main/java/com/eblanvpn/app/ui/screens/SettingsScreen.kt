@@ -133,7 +133,7 @@ fun SettingsScreen(
 
             item {
                 SettingToggle(
-                    icon = Icons.Rounded.LanOutlined,
+                    icon = Icons.Rounded.Lan,
                     title = "Обход локальной сети",
                     subtitle = "LAN трафик не идёт через VPN",
                     checked = settings.enableBypassLan,

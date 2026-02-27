@@ -63,69 +63,11 @@ jobs:
       # JitPack не используется — он требует аутентификацию для этого репо.
       - name: Download libv2ray AAR
         run: |
-          echo "=== Скачиваем libv2ray AAR из GitHub Releases ==="
           mkdir -p app/libs
-
-          DOWNLOADED=false
-
-          # Список репозиториев для поиска AAR (в порядке приоритета)
-          REPOS="2dust/AndroidLibXrayLite 2dust/libv2ray"
-
-          for REPO in $REPOS; do
-            echo "Пробуем репозиторий: $REPO"
-
-            RELEASE_DATA=$(curl -sf \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null || echo "")
-
-            if [ -z "$RELEASE_DATA" ] || [ "$RELEASE_DATA" = "" ]; then
-              echo "  Не удалось получить данные релиза для $REPO"
-              continue
-            fi
-
-            TAG=$(echo "$RELEASE_DATA" | \
-              python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
-              2>/dev/null || echo "")
-            echo "  Версия: ${TAG:-не найдена}"
-
-            # Ищем AAR в ассетах релиза
-            ASSET_URL=$(echo "$RELEASE_DATA" | \
-              python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          assets = d.get('assets', [])
-          aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
-          print(aar)
-          " 2>/dev/null || echo "")
-
-            if [ -n "$ASSET_URL" ]; then
-              echo "  Найден AAR: $ASSET_URL"
-              if curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar; then
-                echo "  AAR скачан: $(ls -lh app/libs/libv2ray-release.aar)"
-                DOWNLOADED=true
-                break
-              else
-                echo "  Не удалось скачать AAR"
-              fi
-            else
-              echo "  AAR не найден в ассетах релиза"
-            fi
-          done
-
-          if [ "$DOWNLOADED" = false ]; then
-            echo ""
-            echo "ОШИБКА: Не удалось скачать libv2ray AAR ни из одного репозитория."
-            echo "Проверьте наличие релизов с AAR-файлами в:"
-            echo "  - https://github.com/2dust/AndroidLibXrayLite/releases"
-            echo "  - https://github.com/2dust/libv2ray/releases"
-            exit 1
-          fi
-
-      # ──────────────────────────────────────────────────────────────────────
-      - name: Show libv2ray config
-        run: |
-          echo "=== app/libs/ ==="
-          ls -la app/libs/ 2>/dev/null || echo "(пусто)"
+          echo "=== Скачиваем libv2ray AAR ==="
+          curl -fL -o app/libs/libv2ray.aar \
+            "https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar"
+          echo "AAR скачан: $(ls -lh app/libs/libv2ray.aar)"
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Build Debug APK
