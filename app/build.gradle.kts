@@ -98,22 +98,11 @@ dependencies {
 
     // libv2ray (xray-core) — VLESS, VMess, Trojan, Shadowsocks, Reality, XTLS
     //
-    // CI автоматически определяет актуальную версию и выставляет libv2ray_version
-    // в gradle.properties (или передаёт через -P флаг).
+    // CI скачивает AAR напрямую из GitHub Releases в app/libs/.
+    // Локальная разработка: положи libv2ray-release.aar в app/libs/
     //
-    // Локальная разработка — три варианта (любой один):
-    //   1) Добавь в ~/.gradle/gradle.properties:  libv2ray_version=<тег>
-    //   2) Добавь в local.properties:             libv2ray_version=<тег>
-    //   3) Положи libv2ray-release.aar в app/libs/ и используй вариант fileTree
-    //
-    // Найти актуальный тег: https://github.com/2dust/libv2ray/releases
-    val libv2rayVersion: String? = findProperty("libv2ray_version") as String?
-    if (!libv2rayVersion.isNullOrBlank()) {
-        implementation("com.github.2dust:libv2ray:$libv2rayVersion")
-    } else {
-        // Fallback: локальный AAR из app/libs/
-        implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
-    }
+    // Найти актуальный AAR: https://github.com/nicaiseeric/libv2ray/releases
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 
     debugImplementation(libs.androidx.ui.tooling)
 }

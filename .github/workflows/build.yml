@@ -59,46 +59,38 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       # ──────────────────────────────────────────────────────────────────────
-      # Определяем актуальную версию libv2ray и передаём её Gradle через property.
-      # Gradle будет использовать JitPack: com.github.2dust:libv2ray:<VERSION>
-      # Это надёжнее, чем скачивать AAR вручную.
-      - name: Detect libv2ray version
+      # Скачиваем libv2ray AAR напрямую из GitHub Releases.
+      # JitPack не используется — он требует аутентификацию для этого репо.
+      - name: Download libv2ray AAR
         run: |
-          echo "=== Поиск актуальной версии libv2ray ==="
+          echo "=== Скачиваем libv2ray AAR из GitHub Releases ==="
+          mkdir -p app/libs
 
-          # 1. Пробуем GitHub Releases API
-          RELEASE_DATA=$(curl -sf \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/2dust/libv2ray/releases/latest" 2>/dev/null || echo "")
+          DOWNLOADED=false
 
-          TAG=$(echo "$RELEASE_DATA" | \
-            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
-            2>/dev/null || echo "")
+          # Список репозиториев для поиска AAR (в порядке приоритета)
+          REPOS="2dust/AndroidLibXrayLite 2dust/libv2ray"
 
-          # 2. Fallback: Tags API
-          if [ -z "$TAG" ]; then
-            echo "Releases API не ответил, пробуем Tags API..."
-            TAGS_DATA=$(curl -sf \
+          for REPO in $REPOS; do
+            echo "Пробуем репозиторий: $REPO"
+
+            RELEASE_DATA=$(curl -sf \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/2dust/libv2ray/tags?per_page=1" 2>/dev/null || echo "")
-            TAG=$(echo "$TAGS_DATA" | \
-              python3 -c "import sys,json; t=json.load(sys.stdin); print(t[0]['name'] if t else '')" \
+              "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null || echo "")
+
+            if [ -z "$RELEASE_DATA" ] || [ "$RELEASE_DATA" = "" ]; then
+              echo "  Не удалось получить данные релиза для $REPO"
+              continue
+            fi
+
+            TAG=$(echo "$RELEASE_DATA" | \
+              python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
               2>/dev/null || echo "")
-          fi
+            echo "  Версия: ${TAG:-не найдена}"
 
-          # 3. Последний резерв — известная рабочая версия
-          if [ -z "$TAG" ]; then
-            echo "Не удалось получить версию из GitHub API (rate limit?)."
-            echo "Используем последнюю известную рабочую версию..."
-            TAG="1.8.19"
-          fi
-
-          echo "Версия libv2ray: $TAG"
-          echo "libv2ray_version=$TAG" >> gradle.properties
-
-          # Также проверяем: есть ли в релизе prebuilt AAR (ускоряет сборку)
-          ASSET_URL=$(echo "$RELEASE_DATA" | \
-            python3 -c "
+            # Ищем AAR в ассетах релиза
+            ASSET_URL=$(echo "$RELEASE_DATA" | \
+              python3 -c "
           import sys, json
           d = json.load(sys.stdin)
           assets = d.get('assets', [])
@@ -106,23 +98,32 @@ jobs:
           print(aar)
           " 2>/dev/null || echo "")
 
-          if [ -n "$ASSET_URL" ]; then
-            echo "Найден prebuilt AAR в релизе: $ASSET_URL"
-            echo "Скачиваем в app/libs/ (будет использован вместо JitPack)..."
-            mkdir -p app/libs
-            curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar && \
-              echo "AAR скачан: $(ls -lh app/libs/libv2ray-release.aar)" || \
-              echo "Скачивание не удалось, JitPack будет использован вместо этого"
-          else
-            echo "Prebuilt AAR не найден в релизе — JitPack скачает и скомпилирует библиотеку."
+            if [ -n "$ASSET_URL" ]; then
+              echo "  Найден AAR: $ASSET_URL"
+              if curl -fL "$ASSET_URL" -o app/libs/libv2ray-release.aar; then
+                echo "  AAR скачан: $(ls -lh app/libs/libv2ray-release.aar)"
+                DOWNLOADED=true
+                break
+              else
+                echo "  Не удалось скачать AAR"
+              fi
+            else
+              echo "  AAR не найден в ассетах релиза"
+            fi
+          done
+
+          if [ "$DOWNLOADED" = false ]; then
+            echo ""
+            echo "ОШИБКА: Не удалось скачать libv2ray AAR ни из одного репозитория."
+            echo "Проверьте наличие релизов с AAR-файлами в:"
+            echo "  - https://github.com/2dust/AndroidLibXrayLite/releases"
+            echo "  - https://github.com/2dust/libv2ray/releases"
+            exit 1
           fi
 
       # ──────────────────────────────────────────────────────────────────────
-      - name: Show resolved libv2ray config
+      - name: Show libv2ray config
         run: |
-          echo "=== gradle.properties ==="
-          grep -i libv2ray gradle.properties || echo "(libv2ray_version не установлен — будет использован fileTree)"
-          echo ""
           echo "=== app/libs/ ==="
           ls -la app/libs/ 2>/dev/null || echo "(пусто)"
 
@@ -175,8 +176,13 @@ jobs:
         run: |
           echo "### Результат сборки" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          LIBV2RAY_VER=$(grep libv2ray_version gradle.properties 2>/dev/null | cut -d= -f2 || echo "fileTree")
-          echo "**libv2ray версия:** \`$LIBV2RAY_VER\`" >> $GITHUB_STEP_SUMMARY
+          LIBV2RAY_AAR=$(ls app/libs/libv2ray*.aar 2>/dev/null | head -1 || echo "")
+          if [ -n "$LIBV2RAY_AAR" ]; then
+            LIBV2RAY_SIZE=$(ls -lh "$LIBV2RAY_AAR" | awk '{print $5}')
+            echo "**libv2ray:** \`$(basename "$LIBV2RAY_AAR")\` ($LIBV2RAY_SIZE)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**libv2ray:** не найден" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           APK_COUNT=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -gt "0" ]; then
