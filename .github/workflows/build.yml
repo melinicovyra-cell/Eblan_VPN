@@ -59,105 +59,95 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       # ──────────────────────────────────────────────────────────────────────
-      # Скачиваем prebuilt AAR libv2ray из GitHub Releases.
-      # JitPack не используется: возвращает 401 (требует Pro-подписку).
-      # Gradle всегда использует fileTree из app/libs/ — зависимость через Maven удалена.
+      # Скачиваем prebuilt AAR из 2dust/AndroidLibXrayLite (xray-core).
+      # Это правильный репозиторий для VLESS/VMess/Reality/XTLS.
+      # Репозиторий 2dust/libv2ray не существует — все предыдущие попытки
+      # были направлены по неверному адресу.
+      # AAR называется libv2ray.aar, скачивается через GitHub API с токеном
+      # (избегает rate limit) и прямым URL как резерв.
       - name: Download libv2ray AAR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "=== Загрузка prebuilt AAR libv2ray ==="
+          echo "=== Загрузка prebuilt AAR из 2dust/AndroidLibXrayLite ==="
           mkdir -p app/libs
 
-          # 1. Получаем данные о последнем релизе через GitHub Releases API
+          REPO="2dust/AndroidLibXrayLite"
+          FALLBACK_TAG="v26.2.6"
+          FALLBACK_URL="https://github.com/${REPO}/releases/download/${FALLBACK_TAG}/libv2ray.aar"
+
+          # Функция скачивания с проверкой размера (>1MB = настоящий AAR)
+          try_download() {
+            local URL="$1"
+            echo "Скачиваем: $URL"
+            if curl -fL --retry 2 --retry-delay 5 \
+                --connect-timeout 30 --max-time 300 \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                "$URL" -o app/libs/libv2ray.aar 2>/dev/null; then
+              local SIZE
+              SIZE=$(stat -c%s app/libs/libv2ray.aar 2>/dev/null || echo 0)
+              if [ "$SIZE" -gt 1000000 ]; then
+                echo "AAR скачан: $(ls -lh app/libs/libv2ray.aar | awk '{print $5}')"
+                return 0
+              else
+                echo "Файл слишком мал (${SIZE} байт) — вероятно HTML ошибки, пропускаем"
+                rm -f app/libs/libv2ray.aar
+              fi
+            fi
+            rm -f app/libs/libv2ray.aar
+            return 1
+          }
+
+          # 1. Получаем последний релиз через GitHub API (аутентифицировано — нет rate limit)
+          echo "Запрашиваем последний релиз ${REPO}..."
           RELEASE_DATA=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/2dust/libv2ray/releases/latest" 2>/dev/null || echo "")
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || echo "")
 
-          TAG=$(echo "$RELEASE_DATA" | \
-            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
-            2>/dev/null || echo "")
-
-          # 2. Fallback: Tags API
-          if [ -z "$TAG" ]; then
-            echo "Releases API не ответил, пробуем Tags API..."
-            TAGS_DATA=$(curl -sf \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/2dust/libv2ray/tags?per_page=1" 2>/dev/null || echo "")
-            TAG=$(echo "$TAGS_DATA" | \
-              python3 -c "import sys,json; t=json.load(sys.stdin); print(t[0]['name'] if t else '')" \
-              2>/dev/null || echo "")
-          fi
-
-          # 3. Резерв — последняя известная рабочая версия
-          if [ -z "$TAG" ]; then
-            echo "GitHub API недоступен. Используем последнюю известную версию."
-            TAG="1.8.19"
-          fi
-
-          echo "Версия libv2ray: $TAG"
-
-          # 4. Пробуем получить точный URL из RELEASE_DATA (самый надёжный способ)
-          ASSET_URL=""
-          if [ -n "$RELEASE_DATA" ]; then
-            ASSET_URL=$(echo "$RELEASE_DATA" | \
-              python3 -c "
+          ASSET_URL=$(echo "$RELEASE_DATA" | \
+            python3 -c "
           import sys, json
           d = json.load(sys.stdin)
           assets = d.get('assets', [])
           aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
           print(aar)
           " 2>/dev/null || echo "")
-            if [ -n "$ASSET_URL" ]; then
-              echo "URL из API: $ASSET_URL"
-            fi
-          fi
 
-          # 5. Скачиваем AAR — сначала из API URL, затем перебираем известные имена файлов
+          TAG=$(echo "$RELEASE_DATA" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tag_name',''))" \
+            2>/dev/null || echo "")
+
+          echo "Тег: ${TAG:-не получен}, URL из API: ${ASSET_URL:-не найден}"
+
+          # 2. Пробуем URL из API (самый точный)
           AAR_DOWNLOADED=false
-
-          try_download() {
-            local URL="$1"
-            echo "Пробуем: $URL"
-            if curl -fL --retry 2 --retry-delay 5 \
-                --connect-timeout 30 --max-time 120 \
-                "$URL" -o app/libs/libv2ray-release.aar 2>/dev/null; then
-              # Проверяем что скачали действительно AAR (не HTML страницу ошибки)
-              local SIZE
-              SIZE=$(stat -c%s app/libs/libv2ray-release.aar 2>/dev/null || echo 0)
-              if [ "$SIZE" -gt 100000 ]; then
-                echo "AAR скачан ($(ls -lh app/libs/libv2ray-release.aar | awk '{print $5}'))"
-                return 0
-              else
-                echo "Файл слишком мал ($SIZE байт) — похоже на HTML ошибки, пропускаем"
-                rm -f app/libs/libv2ray-release.aar
-              fi
-            fi
-            rm -f app/libs/libv2ray-release.aar
-            return 1
-          }
-
-          # Попытка 1: URL из GitHub API (содержит точное имя файла)
           if [ -n "$ASSET_URL" ] && try_download "$ASSET_URL"; then
             AAR_DOWNLOADED=true
           fi
 
-          # Попытки 2-4: прямые URL с разными вариантами имён файлов
+          # 3. Пробуем прямой URL по тегу из API
+          if [ "$AAR_DOWNLOADED" = "false" ] && [ -n "$TAG" ]; then
+            if try_download "https://github.com/${REPO}/releases/download/${TAG}/libv2ray.aar"; then
+              AAR_DOWNLOADED=true
+            fi
+          fi
+
+          # 4. Резерв: известная рабочая версия (v26.2.6)
           if [ "$AAR_DOWNLOADED" = "false" ]; then
-            for FNAME in "libv2ray.aar" "libv2ray-release.aar" "libv2ray-${TAG}.aar"; do
-              URL="https://github.com/2dust/libv2ray/releases/download/${TAG}/${FNAME}"
-              if try_download "$URL"; then
-                AAR_DOWNLOADED=true
-                break
-              fi
-            done
+            echo "Используем резервную версию: ${FALLBACK_TAG}"
+            if try_download "$FALLBACK_URL"; then
+              AAR_DOWNLOADED=true
+            fi
           fi
 
           # Итог
           if [ "$AAR_DOWNLOADED" = "true" ]; then
-            echo "=== AAR готов: $(ls -lh app/libs/*.aar) ==="
+            echo "=== AAR готов ==="
+            ls -lh app/libs/*.aar
           else
-            echo "::error::Не удалось скачать libv2ray AAR ни по одному URL."
-            echo "Скачайте AAR вручную с https://github.com/2dust/libv2ray/releases"
-            echo "и положите его в app/libs/"
+            echo "::error::Не удалось скачать libv2ray AAR."
+            echo "Репозиторий: https://github.com/${REPO}/releases"
             exit 1
           fi
 
