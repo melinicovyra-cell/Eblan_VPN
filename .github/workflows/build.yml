@@ -64,10 +64,11 @@ jobs:
       - name: Download libv2ray AAR
         run: |
           mkdir -p app/libs
-          echo "=== Скачиваем libv2ray AAR ==="
-          curl -fL -o app/libs/libv2ray.aar \
-            "https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar"
-          echo "AAR скачан: $(ls -lh app/libs/libv2ray.aar)"
+          curl -L -o app/libs/libv2ray.aar \
+            "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.2.6/libv2ray.aar"
+          echo "=== Проверяем что файл скачался ==="
+          ls -la app/libs/
+          file app/libs/libv2ray.aar
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Build Debug APK
