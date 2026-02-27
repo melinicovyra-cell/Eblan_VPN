@@ -59,16 +59,15 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       # ──────────────────────────────────────────────────────────────────────
-      # Стратегия: скачиваем prebuilt AAR напрямую из GitHub Releases.
-      # JitPack НЕ используется как основной метод, потому что libv2ray требует
-      # Go-тулчейн для компиляции xray-core — JitPack не может этого сделать.
-      # JitPack — только самый последний резерв.
+      # Скачиваем prebuilt AAR libv2ray из GitHub Releases.
+      # JitPack не используется: возвращает 401 (требует Pro-подписку).
+      # Gradle всегда использует fileTree из app/libs/ — зависимость через Maven удалена.
       - name: Download libv2ray AAR
         run: |
           echo "=== Загрузка prebuilt AAR libv2ray ==="
           mkdir -p app/libs
 
-          # 1. Получаем актуальный тег через GitHub Releases API
+          # 1. Получаем данные о последнем релизе через GitHub Releases API
           RELEASE_DATA=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/2dust/libv2ray/releases/latest" 2>/dev/null || echo "")
@@ -90,13 +89,13 @@ jobs:
 
           # 3. Резерв — последняя известная рабочая версия
           if [ -z "$TAG" ]; then
-            echo "GitHub API недоступен (rate limit?). Используем последнюю известную версию."
+            echo "GitHub API недоступен. Используем последнюю известную версию."
             TAG="1.8.19"
           fi
 
           echo "Версия libv2ray: $TAG"
 
-          # 4. Извлекаем URL AAR из RELEASE_DATA (если данные доступны)
+          # 4. Пробуем получить точный URL из RELEASE_DATA (самый надёжный способ)
           ASSET_URL=""
           if [ -n "$RELEASE_DATA" ]; then
             ASSET_URL=$(echo "$RELEASE_DATA" | \
@@ -107,24 +106,59 @@ jobs:
           aar = next((a['browser_download_url'] for a in assets if a['name'].endswith('.aar')), '')
           print(aar)
           " 2>/dev/null || echo "")
+            if [ -n "$ASSET_URL" ]; then
+              echo "URL из API: $ASSET_URL"
+            fi
           fi
 
-          # 5. Если из API не получили URL — строим его напрямую по известному паттерну
-          if [ -z "$ASSET_URL" ]; then
-            ASSET_URL="https://github.com/2dust/libv2ray/releases/download/${TAG}/libv2ray-release.aar"
-            echo "URL не найден в API, используем прямой URL: $ASSET_URL"
-          fi
+          # 5. Скачиваем AAR — сначала из API URL, затем перебираем известные имена файлов
+          AAR_DOWNLOADED=false
 
-          # 6. Скачиваем AAR (основной метод — fileTree, без JitPack)
-          echo "Скачиваем: $ASSET_URL"
-          if curl -fL --retry 3 --retry-delay 5 "$ASSET_URL" -o app/libs/libv2ray-release.aar; then
-            echo "AAR успешно скачан: $(ls -lh app/libs/libv2ray-release.aar)"
-            echo "Будет использован fileTree из app/libs/ (без JitPack)"
-          else
-            echo "Прямое скачивание не удалось. Последний резерв: JitPack с версией $TAG"
+          try_download() {
+            local URL="$1"
+            echo "Пробуем: $URL"
+            if curl -fL --retry 2 --retry-delay 5 \
+                --connect-timeout 30 --max-time 120 \
+                "$URL" -o app/libs/libv2ray-release.aar 2>/dev/null; then
+              # Проверяем что скачали действительно AAR (не HTML страницу ошибки)
+              local SIZE
+              SIZE=$(stat -c%s app/libs/libv2ray-release.aar 2>/dev/null || echo 0)
+              if [ "$SIZE" -gt 100000 ]; then
+                echo "AAR скачан ($(ls -lh app/libs/libv2ray-release.aar | awk '{print $5}'))"
+                return 0
+              else
+                echo "Файл слишком мал ($SIZE байт) — похоже на HTML ошибки, пропускаем"
+                rm -f app/libs/libv2ray-release.aar
+              fi
+            fi
             rm -f app/libs/libv2ray-release.aar
-            # Записываем версию только если не удалось скачать AAR
-            echo "libv2ray_version=$TAG" >> gradle.properties
+            return 1
+          }
+
+          # Попытка 1: URL из GitHub API (содержит точное имя файла)
+          if [ -n "$ASSET_URL" ] && try_download "$ASSET_URL"; then
+            AAR_DOWNLOADED=true
+          fi
+
+          # Попытки 2-4: прямые URL с разными вариантами имён файлов
+          if [ "$AAR_DOWNLOADED" = "false" ]; then
+            for FNAME in "libv2ray.aar" "libv2ray-release.aar" "libv2ray-${TAG}.aar"; do
+              URL="https://github.com/2dust/libv2ray/releases/download/${TAG}/${FNAME}"
+              if try_download "$URL"; then
+                AAR_DOWNLOADED=true
+                break
+              fi
+            done
+          fi
+
+          # Итог
+          if [ "$AAR_DOWNLOADED" = "true" ]; then
+            echo "=== AAR готов: $(ls -lh app/libs/*.aar) ==="
+          else
+            echo "::error::Не удалось скачать libv2ray AAR ни по одному URL."
+            echo "Скачайте AAR вручную с https://github.com/2dust/libv2ray/releases"
+            echo "и положите его в app/libs/"
+            exit 1
           fi
 
       # ──────────────────────────────────────────────────────────────────────

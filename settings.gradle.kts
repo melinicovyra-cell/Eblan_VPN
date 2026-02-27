@@ -16,7 +16,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io")
+        // JitPack removed: returns 401 for libv2ray (requires Pro subscription).
+        // libv2ray is provided as a prebuilt AAR downloaded by CI into app/libs/.
     }
 }
 
