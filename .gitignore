@@ -1,0 +1,46 @@
+# Gradle
+.gradle/
+build/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.jar
+.gradletasknamecache
+gradlew
+gradlew.bat
+
+# Android
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Keystore (никогда не коммитить!)
+*.jks
+*.keystore
+keystore.properties
+
+# libv2ray AAR (скачивается автоматически CI)
+app/libs/*.aar
+app/libs/*.jar
+!app/libs/.gitkeep
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+*.swp
+*.swo
+.vscode/
+
+# Build outputs
+app/build/
+*/build/
+
+# ProGuard
+proguard/
+
+# Logs
+*.log
+
+# Captures
+captures/
