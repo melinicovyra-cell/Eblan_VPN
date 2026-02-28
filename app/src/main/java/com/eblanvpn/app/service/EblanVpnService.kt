@@ -292,7 +292,7 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
     }
 
     override fun protect(socket: Int): Boolean {
-        return protect(socket).also {
+        return super.protect(socket).also {
             if (!it) Log.w(TAG, "Failed to protect socket: $socket")
         }
     }
