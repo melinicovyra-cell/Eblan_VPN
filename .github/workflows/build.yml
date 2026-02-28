@@ -60,15 +60,20 @@ jobs:
 
       # ──────────────────────────────────────────────────────────────────────
       # Скачиваем libv2ray AAR напрямую из GitHub Releases.
-      # JitPack не используется — он требует аутентификацию для этого репо.
+      # Используем AndroidLibV2rayLite v5.45.1 (v2ray-core, совместимое API)
       - name: Download libv2ray AAR
         run: |
           mkdir -p app/libs
           curl -L -o app/libs/libv2ray.aar \
-            "https://github.com/2dust/AndroidLibV2rayLite/releases/download/v1.6.6/libv2ray.aar"
+            "https://github.com/2dust/AndroidLibV2rayLite/releases/download/v5.45.1/libv2ray.aar"
           echo "=== Проверяем что файл скачался ==="
           ls -la app/libs/
           file app/libs/libv2ray.aar
+
+      - name: Check AAR contents
+        run: |
+          cd app/libs
+          unzip -l libv2ray.aar | grep -E "AndroidManifest|\.class|V2Ray"
 
       # ──────────────────────────────────────────────────────────────────────
       - name: Build Debug APK
