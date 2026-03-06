@@ -1,4 +1,5 @@
 package com.eblanvpn.app.service
+
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -18,6 +19,7 @@ import libv2ray.CoreController
 import libv2ray.Libv2ray
 
 class EblanVpnService : VpnService(), CoreCallbackHandler {
+
     companion object {
         private const val TAG = "EblanVpnService"
         const val ACTION_START = "com.eblanvpn.START"
@@ -25,7 +27,6 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
         const val EXTRA_SERVER_CONFIG = "extra_server_config"
         const val EXTRA_APP_SETTINGS = "extra_app_settings"
 
-        // Shared state accessible from UI
         val vpnState = MutableStateFlow(VpnState.DISCONNECTED)
         val trafficStats = MutableStateFlow(TrafficStats())
         val connectedServer = MutableStateFlow<ServerConfig?>(null)
@@ -46,8 +47,8 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
             context.startService(intent)
         }
     }
-
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())    private var vpnInterface: ParcelFileDescriptor? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var vpnInterface: ParcelFileDescriptor? = null
     private var trafficMonitor: TrafficMonitor? = null
     private var connectionTimer: Job? = null
     private var currentServer: ServerConfig? = null
@@ -95,17 +96,15 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
         serviceScope.launch {
             try {
                 val vpnFd = setupVpnInterface(server) ?: run {
-                    Log.e(TAG, "Failed to establish VPN interface")
-                    withContext(Dispatchers.Main) {                        vpnState.value = VpnState.ERROR
+                    Log.e(TAG, "Failed to establish VPN interface")                    withContext(Dispatchers.Main) {
+                        vpnState.value = VpnState.ERROR
                         stopSelf()
                     }
                     return@launch
                 }
                 val config = V2RayConfigBuilder.build(server, currentSettings)
                 Log.d(TAG, "Starting xray-core...")
-                // Initialize xray-core environment
                 Libv2ray.initCoreEnv(filesDir.absolutePath, "")
-                // Create controller and start the tunnel
                 val controller = Libv2ray.newCoreController(this@EblanVpnService)
                 coreController = controller
                 controller.startLoop(config, vpnFd.fd)
@@ -145,8 +144,8 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
                 if (currentSettings.enableIpv6) {
                     addRoute("::", 0)
                 }
-                allowFamily(android.system.OsConstants.AF_INET)                if (currentSettings.enableIpv6) {
-                    allowFamily(android.system.OsConstants.AF_INET6)
+                allowFamily(android.system.OsConstants.AF_INET)
+                if (currentSettings.enableIpv6) {                    allowFamily(android.system.OsConstants.AF_INET6)
                 }
                 setConfigureIntent(
                     android.app.PendingIntent.getActivity(
@@ -194,8 +193,8 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
     private fun stopVpnTunnel() {
         vpnState.value = VpnState.DISCONNECTING
         serviceScope.launch {
-            doStopVpn()            withContext(Dispatchers.Main) {
-                stopSelf()
+            doStopVpn()
+            withContext(Dispatchers.Main) {                stopSelf()
             }
         }
     }
@@ -235,6 +234,7 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
     }
 
     // ─── CoreCallbackHandler ──────────────────────────────────────────────────
+
     override fun startup(): Long {
         Log.d(TAG, "Core startup")
         return 0L
