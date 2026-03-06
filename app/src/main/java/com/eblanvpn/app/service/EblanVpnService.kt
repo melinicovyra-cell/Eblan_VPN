@@ -1,6 +1,5 @@
 package com.eblanvpn.app.service
 
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -15,11 +14,11 @@ import com.eblanvpn.app.utils.NotificationHelper
 import com.eblanvpn.app.utils.V2RayConfigBuilder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import libv2ray.CoreCallbackHandler
+import libv2ray.CoreController
 import libv2ray.Libv2ray
-import libv2ray.V2RayVPNServiceSupportsSet
 
-class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
+class EblanVpnService : VpnService(), CoreCallbackHandler {
 
     companion object {
         private const val TAG = "EblanVpnService"
@@ -57,6 +56,7 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
     private var connectionTimer: Job? = null
     private var currentServer: ServerConfig? = null
     private var currentSettings: AppSettings = AppSettings()
+    private var coreController: CoreController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,9 +80,7 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
                     stopSelf()
                 }
             }
-            ACTION_STOP -> {
-                stopVpnTunnel()
-            }
+            ACTION_STOP -> stopVpnTunnel()
         }
         return START_NOT_STICKY
     }
@@ -96,7 +94,6 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         currentServer = server
         vpnState.value = VpnState.CONNECTING
 
-        // Show connecting notification
         startForeground(
             NotificationHelper.VPN_NOTIFICATION_ID,
             NotificationHelper.buildConnectingNotification(this, server.name)
@@ -114,42 +111,30 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
                 }
 
                 val config = V2RayConfigBuilder.build(server, currentSettings)
-                Log.d(TAG, "Starting v2ray core...")
+                Log.d(TAG, "Starting xray-core...")
 
-                // Initialize v2ray
-                Libv2ray.initV2Env(filesDir.absolutePath, "")
+                // Initialize xray-core environment
+                Libv2ray.initCoreEnv(filesDir.absolutePath, "")
 
-                val result = Libv2ray.startV2Ray(
-                    this@EblanVpnService,
-                    config,
-                    null,
-                    vpnFd.fd
+                // Create controller and start the tunnel
+                val controller = Libv2ray.newCoreController(this@EblanVpnService)
+                coreController = controller
+                controller.startLoop(config, vpnFd.fd)
+
+                withContext(Dispatchers.Main) {
+                    vpnState.value = VpnState.CONNECTED
+                    connectedServer.value = server
+                    trafficStats.value = TrafficStats()
+                }
+
+                startTrafficMonitor()
+                startConnectionTimer()
+
+                NotificationHelper.updateVpnNotification(
+                    this@EblanVpnService, server.name, TrafficStats()
                 )
 
-                if (result == 0L) {
-                    withContext(Dispatchers.Main) {
-                        vpnState.value = VpnState.CONNECTED
-                        connectedServer.value = server
-                        trafficStats.value = TrafficStats()
-                    }
-
-                    startTrafficMonitor()
-                    startConnectionTimer()
-
-                    // Update notification to connected state
-                    NotificationHelper.updateVpnNotification(
-                        this@EblanVpnService, server.name, TrafficStats()
-                    )
-
-                    Log.i(TAG, "VPN connected to ${server.name}")
-                } else {
-                    Log.e(TAG, "v2ray start failed with code: $result")
-                    vpnFd.close()
-                    withContext(Dispatchers.Main) {
-                        vpnState.value = VpnState.ERROR
-                        stopSelf()
-                    }
-                }
+                Log.i(TAG, "VPN connected to ${server.name}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting VPN", e)
                 withContext(Dispatchers.Main) {
@@ -167,22 +152,18 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
                 setSession("Eblan VPN — ${server.name}")
                 setMtu(currentSettings.mtu)
 
-                // TUN address
                 addAddress("198.18.0.1", 15)
 
-                // DNS
                 addDnsServer(currentSettings.dns1)
                 if (currentSettings.dns2.isNotEmpty()) {
                     addDnsServer(currentSettings.dns2)
                 }
 
-                // Route all traffic
                 addRoute("0.0.0.0", 0)
                 if (currentSettings.enableIpv6) {
                     addRoute("::", 0)
                 }
 
-                // Allow bypass for specific apps
                 allowFamily(android.system.OsConstants.AF_INET)
                 if (currentSettings.enableIpv6) {
                     allowFamily(android.system.OsConstants.AF_INET6)
@@ -209,7 +190,6 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         trafficMonitor?.stop()
         trafficMonitor = TrafficMonitor(serviceScope) { stats ->
             trafficStats.value = stats
-            // Update notification with new traffic stats
             currentServer?.let { server ->
                 NotificationHelper.updateVpnNotification(
                     this@EblanVpnService,
@@ -250,7 +230,8 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
             connectionTimer?.cancel()
             connectionTimer = null
 
-            runCatching { Libv2ray.stopV2Ray() }
+            runCatching { coreController?.stopLoop() }
+            coreController = null
 
             vpnInterface?.close()
             vpnInterface = null
@@ -280,30 +261,21 @@ class EblanVpnService : VpnService(), V2RayVPNServiceSupportsSet {
         super.onRevoke()
     }
 
-    // ─── V2RayVPNServiceSupportsSet ────────────────────────────────────────────
+    // ─── CoreCallbackHandler ──────────────────────────────────────────────────
 
-    override fun shutdown() {
-        Log.d(TAG, "libv2ray requested shutdown")
+    override fun startup(): Int {
+        Log.d(TAG, "Core startup")
+        return 0
+    }
+
+    override fun shutdown(): Int {
+        Log.d(TAG, "Core requested shutdown")
         stopVpnTunnel()
+        return 0
     }
 
-    override fun prepare() {
-        // Called before starting — nothing needed here since we establish in setupVpnInterface
-    }
-
-    override fun protect(socket: Int): Boolean {
-        return protect(socket).also {
-            if (!it) Log.w(TAG, "Failed to protect socket: $socket")
-        }
-    }
-
-    override fun onEmitStatus(duration: Long, status: String) {
-        Log.d(TAG, "v2ray status [$duration]: $status")
-    }
-
-    override fun setup(it: String) {
-        // libv2ray may call this to reconfigure the TUN interface
-        // The format is a comma-separated config string: m,<mtu>,s,<addr>,<prefix>,d,<dns>,...
-        Log.d(TAG, "v2ray setup: $it")
+    override fun onEmitStatus(status: Int, message: String): Int {
+        Log.d(TAG, "Core status [$status]: $message")
+        return 0
     }
 }

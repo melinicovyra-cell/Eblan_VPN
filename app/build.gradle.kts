@@ -96,10 +96,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // libv2ray (xray-core) — VLESS, VMess, Trojan, Shadowsocks, Reality, XTLS
+    // AndroidLibXrayLite (xray-core) — VLESS, VMess, Trojan, Shadowsocks, Reality, XTLS
     //
     // Prebuilt AAR скачивается CI из GitHub Releases в app/libs/.
-    // Локальная разработка: скачай AAR вручную с https://github.com/2dust/libv2ray/releases
+    // Локальная разработка: скачай AAR вручную с https://github.com/2dust/AndroidLibXrayLite/releases
     // и положи его в app/libs/ (любое имя *.aar подойдёт).
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 
