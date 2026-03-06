@@ -5,34 +5,28 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     
-    <!-- Shield background -->
     <path
         android:fillColor="#FFFFFFFF"
         android:pathData="M54,20 C54,20 30,30 30,54 C30,70 44,82 54,88 C64,82 78,70 78,54 C78,30 54,20 54,20Z" />
     
-    <!-- Shield inner (colored) -->
     <path
         android:fillColor="#FFCFBCFF"
         android:pathData="M54,28 C54,28 36,36 36,54 C36,67 44,77 54,82 C64,77 72,67 72,54 C72,36 54,28 54,28Z" />
     
-    <!-- Lock body (конвертировано из rect в path) -->
     <path
         android:fillColor="#FF6750A4"
         android:pathData="M47,52 L61,52 A3,3 0 0 1 64,55 L64,65 A3,3 0 0 1 61,68 L47,68 A3,3 0 0 1 44,65 L44,55 A3,3 0 0 1 47,52 Z" />
     
-    <!-- Lock shackle -->
     <path
         android:fillColor="#FF000000"
         android:strokeColor="#FF6750A4"
         android:strokeWidth="4"
         android:pathData="M46,52 L46,46 A8,8 0 0 1 62,46 L62,52" />
     
-    <!-- Keyhole circle (конвертировано из circle в path) -->
     <path
         android:fillColor="#FFFFFFFF"
         android:pathData="M54,59 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
     
-    <!-- Keyhole rect (конвертировано из rect в path) -->
     <path
         android:fillColor="#FFFFFFFF"
         android:pathData="M52,59 L56,59 L56,65 L52,65 Z" />
