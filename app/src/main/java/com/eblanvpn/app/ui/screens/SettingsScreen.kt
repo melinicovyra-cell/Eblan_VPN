@@ -1,5 +1,4 @@
 package com.eblanvpn.app.ui.screens
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,21 +47,18 @@ fun SettingsScreen(
         TopAppBar(
             title = {
                 Text(
-                    "Настройки",
-                    color = TextPrimary,
+                    "Настройки",                    color = TextPrimary,
                     fontWeight = FontWeight.Bold
                 )
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDeep)
         )
-
         LazyColumn(
             contentPadding = PaddingValues(bottom = 32.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             // ─── Appearance ───────────────────────────────────────────────────
             item { SettingsSection("Внешний вид") }
-
             item {
                 // Accent color picker
                 SettingCard(
@@ -89,7 +85,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
             item {
                 SettingToggle(
                     icon = Icons.Rounded.DarkMode,
@@ -99,12 +94,9 @@ fun SettingsScreen(
                     onChecked = onDarkTheme
                 )
             }
-
             // ─── Connection ───────────────────────────────────────────────────
             item { SettingsSection("Подключение") }
-
-            item {
-                var showRoutingMenu by remember { mutableStateOf(false) }
+            item {                var showRoutingMenu by remember { mutableStateOf(false) }
                 SettingCard(
                     icon = Icons.Rounded.Route,
                     title = "Режим маршрутизации",
@@ -130,17 +122,15 @@ fun SettingsScreen(
                     }
                 }
             }
-
             item {
                 SettingToggle(
-                    icon = Icons.Rounded.LanOutlined,
+                    icon = Icons.Rounded.Dns,
                     title = "Обход локальной сети",
                     subtitle = "LAN трафик не идёт через VPN",
                     checked = settings.enableBypassLan,
                     onChecked = onBypassLan
                 )
             }
-
             item {
                 SettingToggle(
                     icon = Icons.Rounded.NetworkPing,
@@ -150,20 +140,16 @@ fun SettingsScreen(
                     onChecked = onIpv6
                 )
             }
-
             item {
                 SettingToggle(
                     icon = Icons.Rounded.Link,
                     title = "Автоподключение",
                     subtitle = "Подключаться при запуске",
-                    checked = settings.autoConnect,
-                    onChecked = onAutoConnect
+                    checked = settings.autoConnect,                    onChecked = onAutoConnect
                 )
             }
-
             // ─── DNS ──────────────────────────────────────────────────────────
             item { SettingsSection("DNS") }
-
             item {
                 SettingToggle(
                     icon = Icons.Rounded.Lock,
@@ -173,7 +159,6 @@ fun SettingsScreen(
                     onChecked = onDnsOverTls
                 )
             }
-
             item {
                 var editDns1 by remember { mutableStateOf(false) }
                 var dns1Text by remember(settings.dns1) { mutableStateOf(settings.dns1) }
@@ -209,12 +194,10 @@ fun SettingsScreen(
                         dismissButton = {
                             TextButton(onClick = { editDns1 = false }) {
                                 Text("Отмена", color = TextSecondary)
-                            }
-                        }
+                            }                        }
                     )
                 }
             }
-
             item {
                 var editDns2 by remember { mutableStateOf(false) }
                 var dns2Text by remember(settings.dns2) { mutableStateOf(settings.dns2) }
@@ -255,23 +238,18 @@ fun SettingsScreen(
                     )
                 }
             }
-
             // ─── Notifications ────────────────────────────────────────────────
             item { SettingsSection("Уведомления") }
-
             item {
                 SettingToggle(
                     icon = Icons.Rounded.Notifications,
-                    title = "Трафик в уведомлении",
-                    subtitle = "Показывать скорость в статичном уведомлении",
+                    title = "Трафик в уведомлении",                    subtitle = "Показывать скорость в статичном уведомлении",
                     checked = settings.showNotificationTraffic,
                     onChecked = onShowNotificationTraffic
                 )
             }
-
             // ─── Advanced ─────────────────────────────────────────────────────
             item { SettingsSection("Дополнительно") }
-
             item {
                 var showMtuDialog by remember { mutableStateOf(false) }
                 var mtuText by remember(settings.mtu) { mutableStateOf(settings.mtu.toString()) }
@@ -314,11 +292,8 @@ fun SettingsScreen(
                         }
                     )
                 }
-            }
-
-            // ─── About ────────────────────────────────────────────────────────
+            }            // ─── About ────────────────────────────────────────────────────────
             item { SettingsSection("О приложении") }
-
             item {
                 SettingCard(
                     icon = Icons.Rounded.Info,
@@ -326,7 +301,6 @@ fun SettingsScreen(
                     subtitle = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
                 )
             }
-
             item {
                 SettingCard(
                     icon = Icons.Rounded.Code,
@@ -367,8 +341,7 @@ private fun SettingCard(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceCard)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(16.dp),        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Box(
@@ -380,12 +353,10 @@ private fun SettingCard(
         ) {
             Icon(icon, null, tint = PurpleLight, modifier = Modifier.size(20.dp))
         }
-
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
-
         if (trailing != null) {
             trailing()
         } else if (onClick != null) {
@@ -419,20 +390,17 @@ private fun SettingToggle(
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Box(
-            modifier = Modifier
-                .size(38.dp)
+            modifier = Modifier                .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(SurfaceElevated),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, null, tint = PurpleLight, modifier = Modifier.size(20.dp))
         }
-
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
-
         Switch(
             checked = checked,
             onCheckedChange = onChecked,
