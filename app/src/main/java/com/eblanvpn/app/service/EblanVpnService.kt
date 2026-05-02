@@ -116,7 +116,7 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
                 Libv2ray.initCoreEnv(filesDir.absolutePath, "")
                 val controller = Libv2ray.newCoreController(this@EblanVpnService)
                 coreController = controller
-                controller.startLoop(config, vpnFd.fd)
+                // Update state BEFORE startLoop — it blocks until VPN stops
                 withContext(Dispatchers.Main) {
                     vpnState.value = VpnState.CONNECTED
                     connectedServer.value = server
@@ -128,6 +128,7 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
                     this@EblanVpnService, server.name, TrafficStats()
                 )
                 Log.i(TAG, "VPN connected to ${server.name}")
+                controller.startLoop(config, vpnFd.fd)
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting VPN", e)
                 withContext(Dispatchers.Main) {

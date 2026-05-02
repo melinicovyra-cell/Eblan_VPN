@@ -325,12 +325,7 @@ fun AppPickerScreen(
 private fun loadInstalledApps(context: Context): List<InstalledApp> {
     val pm = context.packageManager
     val ownPackage = context.packageName
-    val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.GET_META_DATA
-    val rawApps = try {
-        pm.getInstalledApplications(flags)
-    } catch (e: Exception) {
-        pm.getInstalledApplications(0)
-    }
+    val rawApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
     return rawApps.asSequence()
         .filter { it.packageName != ownPackage }
         .map { info ->
