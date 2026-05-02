@@ -56,6 +56,10 @@ class MainViewModel(
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
+    fun emitSnackbar(message: String) {
+        viewModelScope.launch { _snackbarMessage.emit(message) }
+    }
+
     private var pendingVpnPermission = false
 
     // ─── VPN Control ──────────────────────────────────────────────────────────

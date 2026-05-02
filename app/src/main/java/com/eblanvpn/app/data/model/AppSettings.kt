@@ -1,5 +1,9 @@
 package com.eblanvpn.app.data.model
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
+@Parcelize
 data class AppSettings(
     // Appearance
     val accentColor: AccentColor = AccentColor.PURPLE,
@@ -22,13 +26,18 @@ data class AppSettings(
     // Routing
     val routingMode: RoutingMode = RoutingMode.GLOBAL,
 
+    // Per-app split tunneling
+    val perAppMode: PerAppMode = PerAppMode.OFF,
+    val perAppList: Set<String> = emptySet(),
+
     // Misc
     val autoConnect: Boolean = false,
     val showNotificationTraffic: Boolean = true,
     val logLevel: String = "warning"
-)
+) : Parcelable
 
-enum class AccentColor(val label: String, val colorHex: Long) {
+@Parcelize
+enum class AccentColor(val label: String, val colorHex: Long) : Parcelable {
     PURPLE("Фиолетовый", 0xFF7C3AED),
     BLUE("Синий", 0xFF2563EB),
     CYAN("Голубой", 0xFF0891B2),
@@ -37,9 +46,17 @@ enum class AccentColor(val label: String, val colorHex: Long) {
     PINK("Розовый", 0xFFDB2777)
 }
 
-enum class RoutingMode(val label: String) {
+@Parcelize
+enum class RoutingMode(val label: String) : Parcelable {
     GLOBAL("Весь трафик"),
     BYPASS_RUSSIA("Обходить Россию"),
     BYPASS_LAN("Только LAN"),
     CUSTOM("Настраиваемый")
+}
+
+@Parcelize
+enum class PerAppMode(val label: String, val description: String) : Parcelable {
+    OFF("Выключено", "Все приложения через VPN"),
+    DISALLOW("Исключить выбранные", "Выбранные идут в обход VPN"),
+    ALLOW("Только выбранные", "Только выбранные идут через VPN")
 }

@@ -2,30 +2,22 @@ package com.eblanvpn.app
 
 import android.Manifest
 import android.content.Intent
-import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import com.eblanvpn.app.ui.navigation.AppNavigation
 import com.eblanvpn.app.ui.theme.EblanVPNTheme
 import com.eblanvpn.app.utils.VlessParser
-import com.eblanvpn.app.utils.getClipboardText
 import com.eblanvpn.app.viewmodel.MainViewModel
 import com.eblanvpn.app.viewmodel.SettingsViewModel
 import com.eblanvpn.app.viewmodel.ViewModelFactory
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -113,12 +105,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun importFromClipboard() {
-        val text = getClipboardText()
-        if (text.isNullOrBlank()) {
-            Toast.makeText(this, "Буфер обмена пуст", Toast.LENGTH_SHORT).show()
-            return
-        }
-        mainViewModel.importFromClipboard(text)
-    }
 }

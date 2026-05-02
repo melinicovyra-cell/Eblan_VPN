@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.eblanvpn.app.data.model.AppSettings
+import com.eblanvpn.app.data.model.PerAppMode
 import com.eblanvpn.app.data.model.ServerConfig
 import com.eblanvpn.app.data.model.TrafficStats
 import com.eblanvpn.app.data.model.VpnState
@@ -36,6 +37,7 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
             val intent = Intent(context, EblanVpnService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_SERVER_CONFIG, server)
+                putExtra(EXTRA_APP_SETTINGS, settings)
             }
             context.startForegroundService(intent)
         }
@@ -64,13 +66,19 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                val server = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(EXTRA_SERVER_CONFIG, ServerConfig::class.java)
+                val server: ServerConfig?
+                val settings: AppSettings?
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    server = intent.getParcelableExtra(EXTRA_SERVER_CONFIG, ServerConfig::class.java)
+                    settings = intent.getParcelableExtra(EXTRA_APP_SETTINGS, AppSettings::class.java)
                 } else {
                     @Suppress("DEPRECATION")
-                    intent.getParcelableExtra(EXTRA_SERVER_CONFIG)
+                    server = intent.getParcelableExtra(EXTRA_SERVER_CONFIG)
+                    @Suppress("DEPRECATION")
+                    settings = intent.getParcelableExtra(EXTRA_APP_SETTINGS)
                 }
                 if (server != null) {
+                    currentSettings = settings ?: AppSettings()
                     startVpnTunnel(server)
                 } else {
                     Log.e(TAG, "No server config provided")
@@ -146,8 +154,10 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
                     addRoute("::", 0)
                 }
                 allowFamily(android.system.OsConstants.AF_INET)
-                if (currentSettings.enableIpv6) {                    allowFamily(android.system.OsConstants.AF_INET6)
+                if (currentSettings.enableIpv6) {
+                    allowFamily(android.system.OsConstants.AF_INET6)
                 }
+                applyPerAppRouting(this)
                 setConfigureIntent(
                     android.app.PendingIntent.getActivity(
                         this@EblanVpnService, 0,
@@ -162,6 +172,25 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to setup VPN interface", e)
             null
+        }
+    }
+
+    private fun applyPerAppRouting(builder: Builder) {
+        val mode = currentSettings.perAppMode
+        val list = currentSettings.perAppList
+        if (mode == PerAppMode.OFF || list.isEmpty()) return
+
+        val ownPackage = packageName
+        list.filter { it != ownPackage }.forEach { pkg ->
+            try {
+                when (mode) {
+                    PerAppMode.DISALLOW -> builder.addDisallowedApplication(pkg)
+                    PerAppMode.ALLOW -> builder.addAllowedApplication(pkg)
+                    PerAppMode.OFF -> Unit
+                }
+            } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                Log.w(TAG, "Per-app routing: package not found, skipping: $pkg")
+            }
         }
     }
 

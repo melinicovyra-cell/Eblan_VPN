@@ -1,21 +1,18 @@
 package com.eblanvpn.app.ui.navigation
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.eblanvpn.app.data.model.ServerConfig
-import com.eblanvpn.app.data.model.VpnState
 import com.eblanvpn.app.ui.screens.*
 import com.eblanvpn.app.ui.theme.*
 import com.eblanvpn.app.viewmodel.MainViewModel
@@ -38,6 +35,7 @@ fun AppNavigation(
     val navController = rememberNavController()
     val currentBackstack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackstack?.destination?.route
+    val clipboard = LocalClipboardManager.current
 
     val vpnState by mainViewModel.vpnState.collectAsState()
     val trafficStats by mainViewModel.trafficStats.collectAsState()
@@ -46,16 +44,34 @@ fun AppNavigation(
     val selectedServer by mainViewModel.selectedServer.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
 
-    // Server editing state
     var editingServer by remember { mutableStateOf<ServerConfig?>(null) }
-    var isAddingServer by remember { mutableStateOf(false) }
-    var pasteLink by remember { mutableStateOf("") }
+
+    fun pasteFromClipboardSingle(): Boolean {
+        val text = clipboard.getText()?.text?.trim().orEmpty()
+        if (text.isEmpty()) {
+            mainViewModel.emitSnackbar("Буфер обмена пуст")
+            return false
+        }
+        val ok = mainViewModel.importSingleLink(text)
+        if (!ok) mainViewModel.emitSnackbar("Не удалось распарсить ссылку")
+        return ok
+    }
+
+    fun pasteFromClipboardBulk() {
+        val text = clipboard.getText()?.text.orEmpty()
+        if (text.isBlank()) {
+            mainViewModel.emitSnackbar("Буфер обмена пуст")
+            return
+        }
+        mainViewModel.importFromClipboard(text)
+    }
 
     Scaffold(
         containerColor = BackgroundDeep,
         bottomBar = {
-            // Only show bottom nav when not in add/edit server screen
-            if (currentRoute != "add_server" && currentRoute != "edit_server") {
+            if (currentRoute == Screen.Home.route ||
+                currentRoute == Screen.Servers.route ||
+                currentRoute == Screen.Settings.route) {
                 NavigationBar(
                     containerColor = SurfaceDark,
                     tonalElevation = 0.dp
@@ -139,9 +155,7 @@ fun AppNavigation(
                         navController.navigate("edit_server")
                     },
                     onDeleteServer = { mainViewModel.deleteServer(it) },
-                    onImportFromClipboard = {
-                        // Will be handled in MainActivity
-                    }
+                    onImportFromClipboard = { pasteFromClipboardBulk() }
                 )
             }
 
@@ -158,7 +172,8 @@ fun AppNavigation(
                     onRoutingMode = settingsViewModel::setRoutingMode,
                     onAutoConnect = settingsViewModel::setAutoConnect,
                     onShowNotificationTraffic = settingsViewModel::setShowNotificationTraffic,
-                    onMtu = settingsViewModel::setMtu
+                    onMtu = settingsViewModel::setMtu,
+                    onOpenAppPicker = { navController.navigate("app_picker") }
                 )
             }
 
@@ -171,7 +186,9 @@ fun AppNavigation(
                     },
                     onCancel = { navController.popBackStack() },
                     onPasteLink = {
-                        // Will trigger clipboard paste from parent
+                        if (pasteFromClipboardSingle()) {
+                            navController.popBackStack()
+                        }
                     }
                 )
             }
@@ -186,9 +203,23 @@ fun AppNavigation(
                             navController.popBackStack()
                         },
                         onCancel = { navController.popBackStack() },
-                        onPasteLink = {}
+                        onPasteLink = {
+                            if (pasteFromClipboardSingle()) {
+                                navController.popBackStack()
+                            }
+                        }
                     )
                 }
+            }
+
+            composable("app_picker") {
+                AppPickerScreen(
+                    settings = settings,
+                    onPerAppMode = settingsViewModel::setPerAppMode,
+                    onTogglePackage = settingsViewModel::togglePerAppPackage,
+                    onClearAll = { settingsViewModel.setPerAppList(emptySet()) },
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

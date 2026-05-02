@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.eblanvpn.app.BuildConfig
 import com.eblanvpn.app.data.model.AccentColor
 import com.eblanvpn.app.data.model.AppSettings
+import com.eblanvpn.app.data.model.PerAppMode
 import com.eblanvpn.app.data.model.RoutingMode
 import com.eblanvpn.app.ui.theme.*
 
@@ -37,6 +38,7 @@ fun SettingsScreen(
     onAutoConnect: (Boolean) -> Unit,
     onShowNotificationTraffic: (Boolean) -> Unit,
     onMtu: (Int) -> Unit,
+    onOpenAppPicker: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -121,6 +123,19 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+            item {
+                val subtitle = when (settings.perAppMode) {
+                    PerAppMode.OFF -> "Все приложения через VPN"
+                    PerAppMode.DISALLOW -> "В обход: ${settings.perAppList.size} прил."
+                    PerAppMode.ALLOW -> "Через VPN: ${settings.perAppList.size} прил."
+                }
+                SettingCard(
+                    icon = Icons.Rounded.Apps,
+                    title = "Приложения VPN",
+                    subtitle = subtitle,
+                    onClick = onOpenAppPicker
+                )
             }
             item {
                 SettingToggle(

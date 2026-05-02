@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.eblanvpn.app.data.model.AccentColor
 import com.eblanvpn.app.data.model.AppSettings
+import com.eblanvpn.app.data.model.PerAppMode
 import com.eblanvpn.app.data.model.RoutingMode
 import com.eblanvpn.app.data.repository.VpnRepository
 import kotlinx.coroutines.flow.StateFlow
@@ -83,6 +84,26 @@ class SettingsViewModel(
     fun setRoutingMode(mode: RoutingMode) {
         viewModelScope.launch {
             repository.settingsStore.setRoutingMode(mode)
+        }
+    }
+
+    fun setPerAppMode(mode: PerAppMode) {
+        viewModelScope.launch {
+            repository.settingsStore.setPerAppMode(mode)
+        }
+    }
+
+    fun setPerAppList(packages: Set<String>) {
+        viewModelScope.launch {
+            repository.settingsStore.setPerAppList(packages)
+        }
+    }
+
+    fun togglePerAppPackage(pkg: String) {
+        viewModelScope.launch {
+            val current = settings.value.perAppList
+            val next = if (pkg in current) current - pkg else current + pkg
+            repository.settingsStore.setPerAppList(next)
         }
     }
 

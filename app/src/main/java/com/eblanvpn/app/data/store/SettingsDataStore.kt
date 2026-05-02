@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.eblanvpn.app.data.model.AccentColor
 import com.eblanvpn.app.data.model.AppSettings
+import com.eblanvpn.app.data.model.PerAppMode
 import com.eblanvpn.app.data.model.RoutingMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -28,6 +29,8 @@ class SettingsDataStore(private val context: Context) {
         val LOCAL_SOCKS_PORT = intPreferencesKey("local_socks_port")
         val LOCAL_HTTP_PORT = intPreferencesKey("local_http_port")
         val ROUTING_MODE = stringPreferencesKey("routing_mode")
+        val PER_APP_MODE = stringPreferencesKey("per_app_mode")
+        val PER_APP_LIST = stringSetPreferencesKey("per_app_list")
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
         val SHOW_NOTIFICATION_TRAFFIC = booleanPreferencesKey("show_notification_traffic")
         val LOG_LEVEL = stringPreferencesKey("log_level")
@@ -55,22 +58,15 @@ class SettingsDataStore(private val context: Context) {
                 routingMode = prefs[Keys.ROUTING_MODE]?.let {
                     runCatching { RoutingMode.valueOf(it) }.getOrDefault(RoutingMode.GLOBAL)
                 } ?: RoutingMode.GLOBAL,
+                perAppMode = prefs[Keys.PER_APP_MODE]?.let {
+                    runCatching { PerAppMode.valueOf(it) }.getOrDefault(PerAppMode.OFF)
+                } ?: PerAppMode.OFF,
+                perAppList = prefs[Keys.PER_APP_LIST] ?: emptySet(),
                 autoConnect = prefs[Keys.AUTO_CONNECT] ?: false,
                 showNotificationTraffic = prefs[Keys.SHOW_NOTIFICATION_TRAFFIC] ?: true,
                 logLevel = prefs[Keys.LOG_LEVEL] ?: "warning"
             )
         }
-
-    suspend fun updateSettings(block: AppSettings.() -> AppSettings) {
-        val current = settings.let { flow ->
-            var result = AppSettings()
-            // We just update the dataStore directly
-            result
-        }
-        context.dataStore.edit { prefs ->
-            // We'll handle it differently - update each key individually
-        }
-    }
 
     suspend fun setAccentColor(color: AccentColor) =
         context.dataStore.edit { it[Keys.ACCENT_COLOR] = color.name }
@@ -104,6 +100,12 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setRoutingMode(mode: RoutingMode) =
         context.dataStore.edit { it[Keys.ROUTING_MODE] = mode.name }
+
+    suspend fun setPerAppMode(mode: PerAppMode) =
+        context.dataStore.edit { it[Keys.PER_APP_MODE] = mode.name }
+
+    suspend fun setPerAppList(packages: Set<String>) =
+        context.dataStore.edit { it[Keys.PER_APP_LIST] = packages }
 
     suspend fun setAutoConnect(enabled: Boolean) =
         context.dataStore.edit { it[Keys.AUTO_CONNECT] = enabled }
