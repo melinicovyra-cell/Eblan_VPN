@@ -96,7 +96,8 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
         serviceScope.launch {
             try {
                 val vpnFd = setupVpnInterface(server) ?: run {
-                    Log.e(TAG, "Failed to establish VPN interface")                    withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Failed to establish VPN interface")
+                    withContext(Dispatchers.Main) {
                         vpnState.value = VpnState.ERROR
                         stopSelf()
                     }
@@ -245,7 +246,8 @@ class EblanVpnService : VpnService(), CoreCallbackHandler {
         stopVpnTunnel()
         return 0L    }
 
-    override fun onEmitStatus(status: Int, message: String?) {
+    override fun onEmitStatus(status: Long, message: String?): Long {
         Log.d(TAG, "Core status [$status]: $message")
+        return 0L
     }
 }

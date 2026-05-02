@@ -159,7 +159,7 @@ jobs:
           echo ""
           echo "=== app/libs/ ==="
           ls -lh app/libs/ 2>/dev/null || echo "(пусто)"
-          if [ -f app/libs/libv2ray-release.aar ]; then
+          if [ -f app/libs/libv2ray.aar ]; then
             echo "Prebuilt AAR найден — сборка пойдёт через fileTree (быстро)"
           else
             echo "AAR отсутствует — проверьте шаг 'Download libv2ray AAR'"
