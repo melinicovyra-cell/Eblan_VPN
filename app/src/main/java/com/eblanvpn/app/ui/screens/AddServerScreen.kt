@@ -34,7 +34,23 @@ fun AddServerScreen(
     var name by remember { mutableStateOf(initialConfig?.name ?: "") }
     var address by remember { mutableStateOf(initialConfig?.address ?: "") }
     var port by remember { mutableStateOf(initialConfig?.port?.toString() ?: "443") }
-    var uuid by remember { mutableStateOf(initialConfig?.uuid ?: "") }
+    // Unified auth field: UUID for vless/vmess, password for trojan/shadowsocks
+    var auth by remember {
+        mutableStateOf(
+            initialConfig?.let {
+                when (it.protocol) {
+                    "trojan", "shadowsocks" -> it.password.ifEmpty { it.uuid }
+                    else -> it.uuid
+                }
+            } ?: ""
+        )
+    }
+    var ssMethod by remember {
+        mutableStateOf(
+            initialConfig?.takeIf { it.protocol == "shadowsocks" }
+                ?.encryption?.ifEmpty { "aes-256-gcm" } ?: "aes-256-gcm"
+        )
+    }
     var protocol by remember { mutableStateOf(initialConfig?.protocol ?: "vless") }
     var network by remember { mutableStateOf(initialConfig?.network ?: "tcp") }
     var security by remember { mutableStateOf(initialConfig?.security ?: "none") }
@@ -51,17 +67,39 @@ fun AddServerScreen(
     var protocolMenuExpanded by remember { mutableStateOf(false) }
     var networkMenuExpanded by remember { mutableStateOf(false) }
     var securityMenuExpanded by remember { mutableStateOf(false) }
+    var ssMethodMenuExpanded by remember { mutableStateOf(false) }
 
     val protocols = listOf("vless", "vmess", "trojan", "shadowsocks")
     val networks = listOf("tcp", "ws", "grpc", "h2", "httpupgrade", "splithttp")
     val securities = listOf("none", "tls", "reality")
+    val ssMethods = listOf(
+        "aes-256-gcm", "aes-128-gcm",
+        "chacha20-ietf-poly1305", "chacha20-poly1305",
+        "2022-blake3-aes-256-gcm", "2022-blake3-aes-128-gcm",
+        "none"
+    )
 
     fun buildConfig(): ServerConfig {
-        return (initialConfig ?: ServerConfig()).copy(
+        val base = initialConfig ?: ServerConfig()
+        return base.copy(
             name = name.ifEmpty { "${address}:${port}" },
             address = address,
             port = port.toIntOrNull() ?: 443,
-            uuid = uuid,
+            // vless/vmess use uuid; trojan keeps both (builder falls back uuid→password); ss uses password
+            uuid = when (protocol) {
+                "shadowsocks" -> ""
+                else -> auth
+            },
+            password = when (protocol) {
+                "trojan", "shadowsocks" -> auth
+                else -> ""
+            },
+            encryption = when (protocol) {
+                "shadowsocks" -> ssMethod
+                "vless" -> "none"
+                "vmess" -> base.encryption.takeIf { it.isNotEmpty() && it != "none" } ?: "auto"
+                else -> base.encryption
+            },
             protocol = protocol,
             network = network,
             security = security,
@@ -98,7 +136,7 @@ fun AddServerScreen(
             },
             actions = {
                 TextButton(
-                    onClick = { if (address.isNotBlank() && uuid.isNotBlank()) onSave(buildConfig()) },
+                    onClick = { if (address.isNotBlank() && auth.isNotBlank()) onSave(buildConfig()) },
                     colors = ButtonDefaults.textButtonColors(contentColor = PurplePrimary)
                 ) {
                     Text("Сохранить", fontWeight = FontWeight.SemiBold)
@@ -183,9 +221,43 @@ fun AddServerScreen(
                     "shadowsocks" -> "Пароль"
                     else -> "UUID"
                 },
-                value = uuid,
-                onValue = { uuid = it }
+                value = auth,
+                onValue = { auth = it },
+                placeholder = when (protocol) {
+                    "trojan", "shadowsocks" -> "пароль сервера"
+                    else -> "00000000-0000-0000-0000-000000000000"
+                }
             )
+
+            // Shadowsocks cipher (method) — required for the connection to work
+            if (protocol == "shadowsocks") {
+                ExposedDropdownMenuBox(
+                    expanded = ssMethodMenuExpanded,
+                    onExpandedChange = { ssMethodMenuExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = ssMethod,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Шифрование (method)") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(ssMethodMenuExpanded) },
+                        colors = vpnTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = ssMethodMenuExpanded,
+                        onDismissRequest = { ssMethodMenuExpanded = false },
+                        modifier = Modifier.background(SurfaceElevated)
+                    ) {
+                        ssMethods.forEach { m ->
+                            DropdownMenuItem(
+                                text = { Text(m, color = TextPrimary) },
+                                onClick = { ssMethod = m; ssMethodMenuExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
 
             if (protocol == "vless") {
                 VpnTextField(
@@ -299,8 +371,8 @@ fun AddServerScreen(
 
             // Save button
             Button(
-                onClick = { if (address.isNotBlank() && uuid.isNotBlank()) onSave(buildConfig()) },
-                enabled = address.isNotBlank() && uuid.isNotBlank(),
+                onClick = { if (address.isNotBlank() && auth.isNotBlank()) onSave(buildConfig()) },
+                enabled = address.isNotBlank() && auth.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp)

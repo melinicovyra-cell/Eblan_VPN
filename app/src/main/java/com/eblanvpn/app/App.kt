@@ -13,6 +13,7 @@ class App : Application() {
     val repository by lazy {
         VpnRepository(
             serverDao = database.serverDao(),
+            subscriptionDao = database.subscriptionDao(),
             settingsStore = settingsStore
         )
     }

@@ -66,7 +66,10 @@ data class ServerConfig(
     val httpHost: String = "",
 
     val createdAt: Long = System.currentTimeMillis(),
-    val latency: Long = -1L
+    val latency: Long = -1L,
+
+    // Subscription link: 0 = added manually, otherwise the owning Subscription.id
+    val subscriptionId: Long = 0
 ) : Parcelable {
 
     val displayAddress: String

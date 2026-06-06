@@ -28,6 +28,7 @@ fun ServersScreen(
     onEditServer: (ServerConfig) -> Unit,
     onDeleteServer: (ServerConfig) -> Unit,
     onImportFromClipboard: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -40,13 +41,14 @@ fun ServersScreen(
             ServersTopBar(
                 serverCount = servers.size,
                 onImportClipboard = onImportFromClipboard,
-                onAddServer = onAddServer
+                onOpenSubscriptions = onOpenSubscriptions
             )
 
             if (servers.isEmpty()) {
                 EmptyServersState(
                     onAddServer = onAddServer,
                     onImportClipboard = onImportFromClipboard,
+                    onOpenSubscriptions = onOpenSubscriptions,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -92,7 +94,7 @@ fun ServersScreen(
 private fun ServersTopBar(
     serverCount: Int,
     onImportClipboard: () -> Unit,
-    onAddServer: () -> Unit
+    onOpenSubscriptions: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -113,6 +115,13 @@ private fun ServersTopBar(
             }
         },
         actions = {
+            IconButton(onClick = onOpenSubscriptions) {
+                Icon(
+                    Icons.Rounded.CloudSync,
+                    contentDescription = "Подписки",
+                    tint = PurpleLight
+                )
+            }
             IconButton(onClick = onImportClipboard) {
                 Icon(
                     Icons.Rounded.ContentPaste,
@@ -132,6 +141,7 @@ private fun ServersTopBar(
 private fun EmptyServersState(
     onAddServer: () -> Unit,
     onImportClipboard: () -> Unit,
+    onOpenSubscriptions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -154,7 +164,7 @@ private fun EmptyServersState(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Добавьте сервер вручную или\nвставьте конфигурацию из буфера обмена",
+            text = "Добавьте подписку, сервер вручную\nили вставьте конфигурацию из буфера",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -162,13 +172,26 @@ private fun EmptyServersState(
         Spacer(Modifier.height(32.dp))
 
         Button(
-            onClick = onAddServer,
+            onClick = onOpenSubscriptions,
             colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Rounded.CloudSync, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Добавить подписку")
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = onAddServer,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceElevated),
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Rounded.Add, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Добавить сервер")
+            Text("Добавить сервер вручную")
         }
 
         Spacer(Modifier.height(12.dp))

@@ -156,43 +156,94 @@ object VlessParser {
         val withoutScheme = uri.removePrefix("ss://")
         val fragment = withoutScheme.substringAfter('#', "")
         val name = if (fragment.isNotEmpty()) URLDecoder.decode(fragment, "UTF-8") else ""
-        val withoutFragment = withoutScheme.substringBefore('#')
+        // Strip fragment and any plugin query (?plugin=…) — we don't support plugins
+        val core = withoutScheme.substringBefore('#').substringBefore('?')
 
-        return if (withoutFragment.contains('@')) {
-            // SIP002: ss://base64(method:password)@host:port
-            val userInfo = withoutFragment.substringBefore('@')
-            val hostPort = withoutFragment.substringAfter('@')
-            val decoded = String(Base64.decode(userInfo, Base64.URL_SAFE or Base64.NO_WRAP))
-            val method = decoded.substringBefore(':')
-            val password = decoded.substringAfter(':')
-            val host = hostPort.substringBefore(':')
-            val port = hostPort.substringAfter(':').substringBefore('/').toIntOrNull() ?: 8388
+        return if (core.contains('@')) {
+            // SIP002: ss://method:password@host:port  OR  ss://base64(method:password)@host:port
+            val userInfoRaw = core.substringBefore('@')
+            val hostPort = core.substringAfter('@')
+            // userInfo may be base64 or already plain "method:password"
+            val userInfo = if (userInfoRaw.contains(':')) {
+                userInfoRaw
+            } else {
+                decodeBase64(userInfoRaw)?.takeIf { it.contains(':') } ?: userInfoRaw
+            }
+            val method = userInfo.substringBefore(':')
+            val password = userInfo.substringAfter(':')
+            val host = hostPort.substringBeforeLast(':')
+            val port = hostPort.substringAfterLast(':').toIntOrNull() ?: 8388
             ServerConfig(
                 name = name.ifEmpty { "$host:$port" },
                 protocol = "shadowsocks",
                 address = host,
                 port = port,
                 password = password,
-                encryption = method
+                encryption = method.ifEmpty { "aes-256-gcm" }
             )
         } else {
             // Legacy: ss://base64(method:password@host:port)
-            val decoded = String(Base64.decode(withoutFragment, Base64.URL_SAFE or Base64.NO_WRAP))
+            val decoded = decodeBase64(core) ?: error("Invalid shadowsocks link")
             val method = decoded.substringBefore(':')
             val rest = decoded.substringAfter(':')
             val password = rest.substringBefore('@')
             val hostPort = rest.substringAfter('@')
-            val host = hostPort.substringBefore(':')
-            val port = hostPort.substringAfter(':').toIntOrNull() ?: 8388
+            val host = hostPort.substringBeforeLast(':')
+            val port = hostPort.substringAfterLast(':').toIntOrNull() ?: 8388
             ServerConfig(
                 name = name.ifEmpty { "$host:$port" },
                 protocol = "shadowsocks",
                 address = host,
                 port = port,
                 password = password,
-                encryption = method
+                encryption = method.ifEmpty { "aes-256-gcm" }
             )
         }
+    }
+
+    /**
+     * Decode a base64 string, tolerating URL-safe / standard alphabets and
+     * missing padding. Returns null if it can't be decoded into valid UTF-8 text.
+     */
+    private fun decodeBase64(input: String): String? {
+        val clean = input.trim().replace("\n", "").replace("\r", "").replace(" ", "")
+        val flags = intArrayOf(
+            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+            Base64.DEFAULT or Base64.NO_PADDING,
+            Base64.URL_SAFE or Base64.NO_WRAP,
+            Base64.DEFAULT
+        )
+        for (flag in flags) {
+            val result = runCatching { String(Base64.decode(clean, flag), Charsets.UTF_8) }.getOrNull()
+            if (result != null) return result
+        }
+        return null
+    }
+
+    /**
+     * Parse a whole subscription payload. A subscription is usually the entire
+     * body base64-encoded (decoding to newline-separated links), but may also be
+     * plain text containing the links directly.
+     */
+    fun parseSubscription(raw: String): List<ServerConfig> {
+        val body = raw.trim()
+        if (body.isEmpty()) return emptyList()
+
+        // 1) Body already contains links → parse directly
+        if (body.contains("://")) {
+            val direct = parseMultiple(body)
+            if (direct.isNotEmpty()) return direct
+        }
+
+        // 2) Body is one big base64 blob → decode then parse
+        val decoded = decodeBase64(body)
+        if (decoded != null && decoded.contains("://")) {
+            val fromBlob = parseMultiple(decoded)
+            if (fromBlob.isNotEmpty()) return fromBlob
+        }
+
+        // 3) Last resort: line-by-line (handles per-line base64)
+        return parseMultiple(body)
     }
 
     /**
@@ -210,10 +261,9 @@ object VlessParser {
                         .mapNotNull { parse(it.trim()) }
                 } else {
                     // Try base64 decode
-                    runCatching {
-                        val decoded = String(Base64.decode(line, Base64.DEFAULT))
-                        parseMultiple(decoded)
-                    }.getOrDefault(emptyList())
+                    val decoded = decodeBase64(line)
+                    if (decoded != null && decoded.contains("://")) parseMultiple(decoded)
+                    else emptyList()
                 }
             }
     }

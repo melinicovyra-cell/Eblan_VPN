@@ -5,15 +5,18 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.eblanvpn.app.data.model.ServerConfig
+import com.eblanvpn.app.data.model.Subscription
 
 @Database(
-    entities = [ServerConfig::class],
-    version = 1,
+    entities = [ServerConfig::class, Subscription::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun serverDao(): ServerDao
+
+    abstract fun subscriptionDao(): SubscriptionDao
 
     companion object {
         private const val DB_NAME = "eblan_vpn.db"

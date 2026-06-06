@@ -42,6 +42,8 @@ fun AppNavigation(
     val connectionTime by mainViewModel.connectionTime.collectAsState()
     val servers by mainViewModel.servers.collectAsState()
     val selectedServer by mainViewModel.selectedServer.collectAsState()
+    val subscriptions by mainViewModel.subscriptions.collectAsState()
+    val refreshingSubs by mainViewModel.refreshingSubs.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
 
     var editingServer by remember { mutableStateOf<ServerConfig?>(null) }
@@ -155,7 +157,8 @@ fun AppNavigation(
                         navController.navigate("edit_server")
                     },
                     onDeleteServer = { mainViewModel.deleteServer(it) },
-                    onImportFromClipboard = { pasteFromClipboardBulk() }
+                    onImportFromClipboard = { pasteFromClipboardBulk() },
+                    onOpenSubscriptions = { navController.navigate("subscriptions") }
                 )
             }
 
@@ -218,6 +221,18 @@ fun AppNavigation(
                     onPerAppMode = settingsViewModel::setPerAppMode,
                     onTogglePackage = settingsViewModel::togglePerAppPackage,
                     onClearAll = { settingsViewModel.setPerAppList(emptySet()) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("subscriptions") {
+                SubscriptionsScreen(
+                    subscriptions = subscriptions,
+                    refreshingIds = refreshingSubs,
+                    onAdd = { name, url -> mainViewModel.addSubscription(name, url) },
+                    onRefresh = { mainViewModel.refreshSubscription(it) },
+                    onRefreshAll = { mainViewModel.refreshAllSubscriptions() },
+                    onDelete = { mainViewModel.deleteSubscription(it) },
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.eblanvpn.app.data.model.AppSettings
 import com.eblanvpn.app.data.model.ServerConfig
+import com.eblanvpn.app.data.model.Subscription
 import com.eblanvpn.app.data.model.TrafficStats
 import com.eblanvpn.app.data.model.VpnState
 import com.eblanvpn.app.data.repository.VpnRepository
@@ -42,6 +43,15 @@ class MainViewModel(
 
     val selectedServer: StateFlow<ServerConfig?> = repository.getSelectedServer()
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // ─── Subscriptions ────────────────────────────────────────────────────────
+
+    val subscriptions: StateFlow<List<Subscription>> = repository.getAllSubscriptions()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** ids of subscriptions currently being refreshed (for spinners) */
+    private val _refreshingSubs = MutableStateFlow<Set<Long>>(emptySet())
+    val refreshingSubs: StateFlow<Set<Long>> = _refreshingSubs.asStateFlow()
 
     // ─── Settings ─────────────────────────────────────────────────────────────
 
@@ -171,5 +181,65 @@ class MainViewModel(
         val config = VlessParser.parse(link) ?: return false
         addServer(config)
         return true
+    }
+
+    // ─── Subscription Management ──────────────────────────────────────────────
+
+    /** Add a new subscription and immediately download its servers. */
+    fun addSubscription(name: String, url: String) {
+        val cleanUrl = url.trim()
+        if (cleanUrl.isBlank()) {
+            emitSnackbar("Введите ссылку подписки")
+            return
+        }
+        viewModelScope.launch {
+            val draft = Subscription(name = name.trim(), url = cleanUrl)
+            val id = repository.addSubscription(draft)
+            refreshInternal(draft.copy(id = id), announce = true)
+        }
+    }
+
+    fun refreshSubscription(subscription: Subscription) {
+        viewModelScope.launch { refreshInternal(subscription, announce = true) }
+    }
+
+    fun refreshAllSubscriptions() {
+        viewModelScope.launch {
+            val subs = subscriptions.value
+            if (subs.isEmpty()) {
+                emitSnackbar("Нет подписок")
+                return@launch
+            }
+            var total = 0
+            subs.forEach { sub -> total += refreshInternal(sub, announce = false) }
+            emitSnackbar("Обновлено подписок: ${subs.size} • серверов: $total")
+        }
+    }
+
+    fun deleteSubscription(subscription: Subscription) {
+        viewModelScope.launch {
+            repository.deleteSubscription(subscription)
+            emitSnackbar("Подписка удалена")
+        }
+    }
+
+    private suspend fun refreshInternal(subscription: Subscription, announce: Boolean): Int {
+        _refreshingSubs.update { it + subscription.id }
+        val result = repository.refreshSubscription(subscription)
+        _refreshingSubs.update { it - subscription.id }
+
+        var imported = 0
+        result.onSuccess { count ->
+            imported = count
+            if (announce) emitSnackbar("«${subscription.displayName}»: импортировано $count серверов")
+        }.onFailure { e ->
+            if (announce) emitSnackbar("Ошибка подписки: ${e.message ?: "сбой загрузки"}")
+        }
+
+        // If nothing is selected yet, pick the first available server
+        if (selectedServer.value == null) {
+            servers.value.firstOrNull()?.let { repository.selectServer(it.id) }
+        }
+        return imported
     }
 }

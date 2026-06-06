@@ -19,6 +19,9 @@ interface ServerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertServer(server: ServerConfig): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertServers(servers: List<ServerConfig>)
+
     @Update
     suspend fun updateServer(server: ServerConfig)
 
@@ -39,6 +42,12 @@ interface ServerDao {
 
     @Query("SELECT COUNT(*) FROM servers")
     suspend fun getServerCount(): Int
+
+    @Query("DELETE FROM servers WHERE subscriptionId = :subscriptionId")
+    suspend fun deleteBySubscription(subscriptionId: Long)
+
+    @Query("SELECT COUNT(*) FROM servers WHERE subscriptionId = :subscriptionId")
+    suspend fun countBySubscription(subscriptionId: Long): Int
 
     @Transaction
     suspend fun selectServerExclusive(id: Long) {
